@@ -10,10 +10,10 @@
     <style>
         body, html { margin: 0; padding: 0; height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; overflow: hidden; }
         
-        /* HEADER STYLES */
+        /* HEADER */
         #header {
             height: 50px;
-            background-color: #333;
+            background-color: #333; /* Dunkelgrau */
             color: #fff;
             display: flex;
             align-items: center;
@@ -41,31 +41,32 @@
             display: flex;
             align-items: center;
             gap: 6px;
+            cursor: pointer;
         }
 
-        .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+        /* Farb-Punkte im Header */
+        .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; border: 1px solid #fff; }
         .dot-red { background: #e74c3c; }
         .dot-green { background: #2ecc71; }
 
-        /* Custom Checkbox Design */
-        label { cursor: pointer; user-select: none; }
-        input[type="checkbox"] { margin-right: 5px; cursor: pointer; }
+        input[type="checkbox"] { cursor: pointer; }
 
-        /* MAP STYLES */
+        /* MAP */
         #map {
             height: calc(100% - 50px);
             width: 100%;
             background: #f0f0f0;
         }
 
-        /* POPUP STYLES */
+        /* POPUP */
         .leaflet-popup-content-wrapper { border-radius: 6px; }
-        .popup-content { font-size: 14px; min-width: 200px; }
+        .popup-content { font-size: 14px; min-width: 180px; }
         .popup-header { font-weight: bold; margin-bottom: 5px; font-size: 15px; border-bottom: 1px solid #eee; padding-bottom: 5px;}
-        .popup-meta { color: #666; margin-bottom: 10px; font-family: monospace; }
+        .popup-meta { color: #666; margin-bottom: 10px; font-family: monospace; font-size: 12px; }
+        
         .btn { 
-            display: block; text-align: center; padding: 8px; margin-top: 5px; 
-            text-decoration: none; border-radius: 4px; color: white; font-weight: 500; 
+            display: block; text-align: center; padding: 6px; margin-top: 5px; 
+            text-decoration: none; border-radius: 4px; color: white; font-weight: 500; font-size: 13px;
         }
         .btn-wiki { background-color: #333; }
         .btn-osm { background-color: #2ecc71; }
@@ -78,7 +79,7 @@
 <header id="header">
     <div id="title">suedtirol-wikidata</div>
     <div id="controls">
-        <span style="color:#aaa;">Loading data...</span>
+        <span style="color:#aaa;">Loading...</span>
     </div>
 </header>
 
@@ -87,10 +88,10 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
-    // 1. Map Setup (Canvas renderer for performance with many points)
+    // 1. Karte (Canvas für Performance)
     var map = L.map('map', {
-        preferCanvas: true,
-        zoomControl: false // We add it manually to move it if needed
+        preferCanvas: true, 
+        zoomControl: false 
     }).setView([46.6, 11.4], 9);
 
     L.control.zoom({ position: 'topleft' }).addTo(map);
@@ -100,17 +101,15 @@
         attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
-    // 2. Data Logic
+    // 2. Layer Groups
     var layers = {
         missing: L.layerGroup(),
         done: L.layerGroup()
     };
 
     var stats = { missing: 0, done: 0 };
-
-    // Farben
-    var COLOR_MISSING = "#e74c3c"; // Rot
-    var COLOR_DONE = "#2ecc71";    // Grün
+    var COLOR_MISSING = "#e74c3c";
+    var COLOR_DONE = "#2ecc71";
 
     fetch('data.geojson')
         .then(res => res.json())
@@ -118,22 +117,23 @@
             
             data.features.forEach(feature => {
                 var props = feature.properties;
-                var coords = feature.geometry.coordinates; // [lon, lat]
+                var coords = feature.geometry.coordinates;
                 var latlng = [coords[1], coords[0]];
 
-                // Popup Content construction
+                // Popup Inhalt
                 var popupHtml = `<div class="popup-content">
                     <div class="popup-header">${props.name}</div>
                     <div class="popup-meta">${props.wikidata}</div>
-                    <a href="https://www.wikidata.org/wiki/${props.wikidata}" target="_blank" class="btn btn-wiki">View on Wikidata</a>`;
+                    <a href="https://www.wikidata.org/wiki/${props.wikidata}" target="_blank" class="btn btn-wiki">Wikidata Item</a>`;
                 
+                // Nur OSM Button zeigen, wenn auch in OSM vorhanden
                 if (props.status === 'done' && props.osm_id) {
-                    popupHtml += `<a href="https://www.openstreetmap.org/${props.osm_id}" target="_blank" class="btn btn-osm">View on OSM</a>`;
+                    popupHtml += `<a href="https://www.openstreetmap.org/${props.osm_id}" target="_blank" class="btn btn-osm">OpenStreetMap Object</a>`;
                 }
                 
                 popupHtml += `</div>`;
 
-                // Circle Marker style
+                // Punkt (CircleMarker)
                 var color = (props.status === 'missing') ? COLOR_MISSING : COLOR_DONE;
                 
                 var marker = L.circleMarker(latlng, {
@@ -145,7 +145,6 @@
                     fillOpacity: 0.8
                 }).bindPopup(popupHtml);
 
-                // Add to respective layer
                 if (props.status === 'missing') {
                     layers.missing.addLayer(marker);
                     stats.missing++;
@@ -155,36 +154,32 @@
                 }
             });
 
-            // 3. Initialize View
-            layers.missing.addTo(map); // Default: show missing
-            // layers.done.addTo(map); // Uncomment to show done by default
+            // Initial Layer State (Nur Missing anzeigen)
+            layers.missing.addTo(map); 
 
-            // 4. Update Header UI
+            // Header updaten
             updateHeader();
-
         })
-        .catch(err => console.error("Error loading data:", err));
+        .catch(err => console.error("Error:", err));
 
+    // Update Header mit Checkboxen und Zahlen
     function updateHeader() {
         var container = document.getElementById('controls');
         container.innerHTML = `
-            <div class="stat-item">
+            <div class="stat-item" onclick="toggleCheckbox('chkMissing')">
                 <span class="dot dot-red"></span>
-                <label>
-                    <input type="checkbox" checked onchange="toggleLayer('missing', this.checked)">
-                    Missing (${stats.missing})
-                </label>
+                <input type="checkbox" id="chkMissing" checked onchange="toggleLayer('missing', this.checked)">
+                Missing (${stats.missing})
             </div>
-            <div class="stat-item">
+            <div class="stat-item" onclick="toggleCheckbox('chkDone')">
                 <span class="dot dot-green"></span>
-                <label>
-                    <input type="checkbox" onchange="toggleLayer('done', this.checked)">
-                    Mapped (${stats.done})
-                </label>
+                <input type="checkbox" id="chkDone" onchange="toggleLayer('done', this.checked)">
+                Mapped (${stats.done})
             </div>
         `;
     }
 
+    // Layer Schalten
     function toggleLayer(type, isChecked) {
         if (isChecked) {
             map.addLayer(layers[type]);
@@ -192,6 +187,17 @@
             map.removeLayer(layers[type]);
         }
     }
+
+    // Klick auf Text schaltet Checkbox
+    window.toggleCheckbox = function(id) {
+        var chk = document.getElementById(id);
+        // Event wird durch Label/Input Propagation automatisch handled, 
+        // hier nur Fallback falls Klick auf Text
+        if (event.target !== chk) {
+            chk.checked = !chk.checked;
+            chk.dispatchEvent(new Event('change'));
+        }
+    };
 
 </script>
 </body>
