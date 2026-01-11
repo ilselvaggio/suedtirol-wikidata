@@ -22,7 +22,6 @@ jobs:
 
       - name: Download Wikidata CSV
         run: |
-          # SPARQL Query encoded
           curl -G "https://query.wikidata.org/sparql" \
             --data-urlencode "query=SELECT DISTINCT ?qid ?lat ?lon ?label WHERE { ?item wdt:P131* wd:Q15124; wdt:P625 ?loc . BIND(STRAFTER(STR(?item), '/entity/') as ?qid) BIND(geof:latitude(?loc) as ?lat) BIND(geof:longitude(?loc) as ?lon) OPTIONAL { ?item rdfs:label ?label. FILTER(lang(?label)='de') } }" \
             --header "Accept: text/csv" \
@@ -30,11 +29,11 @@ jobs:
 
       - name: Download OSM JSON
         run: |
-          # Overpass API mit fester Area ID 3600047046 (Relation 47046)
-          # Escaping für YAML: " wird zu \"
-          curl -G "https://overpass-api.de/api/interpreter" \
-            --data-urlencode "data=[out:json][timeout:900]; area(id:3600047046)->.searchArea; nwr[~^\".*wikidata$\"~^\".\"](area.searchArea); out tags;" \
-            -o osm.json
+          # 1. Abfrage sauber in eine Datei schreiben (Single Quotes schützen den Inhalt)
+          echo '[out:json][timeout:900]; area(id:3600047046)->.searchArea; nwr[~".*wikidata$"~"."](area.searchArea); out tags;' > query.osm
+          
+          # 2. Datei per POST senden (kein URL-Encoding Chaos mehr)
+          curl -X POST -d @query.osm "https://overpass-api.de/api/interpreter" -o osm.json
 
       - name: Process Data
         run: python abgleich.py
