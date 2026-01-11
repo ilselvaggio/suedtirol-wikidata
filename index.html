@@ -1,17 +1,25 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wikidata vs OSM - Südtirol</title>
+    <title>Wikidata in South Tyrol Check</title>
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
     
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; width: 100%; font-family: sans-serif; }
+        body, html { margin: 0; padding: 0; height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
         #map { height: 100%; width: 100%; }
+        
+        /* Custom Popup Styles */
+        .leaflet-popup-content-wrapper { border-radius: 4px; box-shadow: 0 3px 14px rgba(0,0,0,0.2); }
+        .leaflet-popup-content { margin: 16px; line-height: 1.5; font-size: 14px; }
+        .popup-title { font-weight: 700; font-size: 16px; margin-bottom: 5px; color: #333; }
+        .popup-qid { color: #666; font-family: monospace; background: #eee; padding: 2px 4px; border-radius: 3px; }
+        .btn-josm { display: inline-block; margin-top: 10px; padding: 6px 12px; background: #007bff; color: white; text-decoration: none; border-radius: 3px; font-size: 12px; }
+        .btn-josm:hover { background: #0056b3; }
     </style>
 </head>
 <body>
@@ -29,8 +37,8 @@
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'
     }).addTo(map);
 
-    var markersMissing = L.markerClusterGroup();
-    var markersDone = L.markerClusterGroup();
+    var markersMissing = L.markerClusterGroup({ disableClusteringAtZoom: 16 });
+    var markersDone = L.markerClusterGroup({ disableClusteringAtZoom: 16 });
 
     // Icons
     var redIcon = new L.Icon({
@@ -51,21 +59,24 @@
             L.geoJSON(data, {
                 pointToLayer: function (feature, latlng) {
                     var status = feature.properties.status;
+                    var qid = feature.properties.wikidata;
+                    var name = feature.properties.name;
+                    
                     var marker = L.marker(latlng, {
                         icon: status === 'missing' ? redIcon : greenIcon
                     });
+
+                    // JOSM Remote Control
+                    var offset = 0.0005;
+                    var josmUrl = `http://127.0.0.1:8111/load_and_zoom?left=${latlng.lng-offset}&right=${latlng.lng+offset}&top=${latlng.lat+offset}&bottom=${latlng.lat-offset}&select=node`;
+
+                    var popupContent = `
+                        <div class="popup-title">${name}</div>
+                        <span class="popup-qid"><a href="https://www.wikidata.org/wiki/${qid}" target="_blank" style="color:inherit;text-decoration:none;">${qid}</a></span><br>
+                        <a href="${josmUrl}" target="hiddenIframe" class="btn-josm">Edit in JOSM</a>
+                    `;
                     
-                    var qid = feature.properties.wikidata;
-                    var name = feature.properties.name;
-                    // JOSM Remote Link (kleine BBox um Punkt)
-                    var offset = 0.001;
-                    var josmUrl = `http://127.0.0.1:8111/load_and_zoom?left=${latlng.lng-offset}&right=${latlng.lng+offset}&top=${latlng.lat+offset}&bottom=${latlng.lat-offset}`;
-                    
-                    marker.bindPopup(`
-                        <b>${name}</b><br>
-                        <a href="https://www.wikidata.org/wiki/${qid}" target="_blank">${qid}</a><br><br>
-                        <a href="${josmUrl}" target="hiddenIframe">Edit in JOSM</a>
-                    `);
+                    marker.bindPopup(popupContent);
                     
                     if (status === 'missing') {
                         markersMissing.addLayer(marker);
@@ -76,17 +87,16 @@
                 }
             });
 
-            map.addLayer(markersMissing); // Standardmäßig nur Missing
+            map.addLayer(markersMissing); // Default view
 
             var overlays = {
-                "Fehlend (Rot)": markersMissing,
-                "Erledigt (Grün)": markersDone
+                "<span style='color:red'>Missing in OSM</span>": markersMissing,
+                "<span style='color:green'>Mapped in OSM</span>": markersDone
             };
             L.control.layers(null, overlays, {collapsed: false}).addTo(map);
         })
-        .catch(e => console.error("Data error:", e));
+        .catch(e => console.error("Error loading GeoJSON:", e));
 
-    // Hidden Iframe für JOSM
     var iframe = document.createElement('iframe');
     iframe.name = "hiddenIframe";
     iframe.style.display = "none";
