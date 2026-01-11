@@ -3,104 +3,196 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wikidata in South Tyrol Check</title>
+    <title>suedtirol-wikidata</title>
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
     
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-        #map { height: 100%; width: 100%; }
+        body, html { margin: 0; padding: 0; height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; overflow: hidden; }
         
-        /* Custom Popup Styles */
-        .leaflet-popup-content-wrapper { border-radius: 4px; box-shadow: 0 3px 14px rgba(0,0,0,0.2); }
-        .leaflet-popup-content { margin: 16px; line-height: 1.5; font-size: 14px; }
-        .popup-title { font-weight: 700; font-size: 16px; margin-bottom: 5px; color: #333; }
-        .popup-qid { color: #666; font-family: monospace; background: #eee; padding: 2px 4px; border-radius: 3px; }
-        .btn-josm { display: inline-block; margin-top: 10px; padding: 6px 12px; background: #007bff; color: white; text-decoration: none; border-radius: 3px; font-size: 12px; }
-        .btn-josm:hover { background: #0056b3; }
+        /* HEADER STYLES */
+        #header {
+            height: 50px;
+            background-color: #333;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            z-index: 1000;
+            position: relative;
+        }
+        
+        #title {
+            font-weight: 700;
+            font-size: 18px;
+            letter-spacing: 0.5px;
+        }
+
+        #controls {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            font-size: 14px;
+        }
+
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+        .dot-red { background: #e74c3c; }
+        .dot-green { background: #2ecc71; }
+
+        /* Custom Checkbox Design */
+        label { cursor: pointer; user-select: none; }
+        input[type="checkbox"] { margin-right: 5px; cursor: pointer; }
+
+        /* MAP STYLES */
+        #map {
+            height: calc(100% - 50px);
+            width: 100%;
+            background: #f0f0f0;
+        }
+
+        /* POPUP STYLES */
+        .leaflet-popup-content-wrapper { border-radius: 6px; }
+        .popup-content { font-size: 14px; min-width: 200px; }
+        .popup-header { font-weight: bold; margin-bottom: 5px; font-size: 15px; border-bottom: 1px solid #eee; padding-bottom: 5px;}
+        .popup-meta { color: #666; margin-bottom: 10px; font-family: monospace; }
+        .btn { 
+            display: block; text-align: center; padding: 8px; margin-top: 5px; 
+            text-decoration: none; border-radius: 4px; color: white; font-weight: 500; 
+        }
+        .btn-wiki { background-color: #333; }
+        .btn-osm { background-color: #2ecc71; }
+        .btn:hover { opacity: 0.9; }
+
     </style>
 </head>
 <body>
 
+<header id="header">
+    <div id="title">suedtirol-wikidata</div>
+    <div id="controls">
+        <span style="color:#aaa;">Loading data...</span>
+    </div>
+</header>
+
 <div id="map"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 
 <script>
-    var map = L.map('map').setView([46.6, 11.4], 9);
+    // 1. Map Setup (Canvas renderer for performance with many points)
+    var map = L.map('map', {
+        preferCanvas: true,
+        zoomControl: false // We add it manually to move it if needed
+    }).setView([46.6, 11.4], 9);
+
+    L.control.zoom({ position: 'topleft' }).addTo(map);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'
+        attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
-    var markersMissing = L.markerClusterGroup({ disableClusteringAtZoom: 16 });
-    var markersDone = L.markerClusterGroup({ disableClusteringAtZoom: 16 });
+    // 2. Data Logic
+    var layers = {
+        missing: L.layerGroup(),
+        done: L.layerGroup()
+    };
 
-    // Icons
-    var redIcon = new L.Icon({
-        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
-        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-        iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
-    });
+    var stats = { missing: 0, done: 0 };
 
-    var greenIcon = new L.Icon({
-        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
-        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-        iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
-    });
+    // Farben
+    var COLOR_MISSING = "#e74c3c"; // Rot
+    var COLOR_DONE = "#2ecc71";    // Grün
 
     fetch('data.geojson')
-        .then(response => response.json())
+        .then(res => res.json())
         .then(data => {
-            L.geoJSON(data, {
-                pointToLayer: function (feature, latlng) {
-                    var status = feature.properties.status;
-                    var qid = feature.properties.wikidata;
-                    var name = feature.properties.name;
-                    
-                    var marker = L.marker(latlng, {
-                        icon: status === 'missing' ? redIcon : greenIcon
-                    });
+            
+            data.features.forEach(feature => {
+                var props = feature.properties;
+                var coords = feature.geometry.coordinates; // [lon, lat]
+                var latlng = [coords[1], coords[0]];
 
-                    // JOSM Remote Control
-                    var offset = 0.0005;
-                    var josmUrl = `http://127.0.0.1:8111/load_and_zoom?left=${latlng.lng-offset}&right=${latlng.lng+offset}&top=${latlng.lat+offset}&bottom=${latlng.lat-offset}&select=node`;
+                // Popup Content construction
+                var popupHtml = `<div class="popup-content">
+                    <div class="popup-header">${props.name}</div>
+                    <div class="popup-meta">${props.wikidata}</div>
+                    <a href="https://www.wikidata.org/wiki/${props.wikidata}" target="_blank" class="btn btn-wiki">View on Wikidata</a>`;
+                
+                if (props.status === 'done' && props.osm_id) {
+                    popupHtml += `<a href="https://www.openstreetmap.org/${props.osm_id}" target="_blank" class="btn btn-osm">View on OSM</a>`;
+                }
+                
+                popupHtml += `</div>`;
 
-                    var popupContent = `
-                        <div class="popup-title">${name}</div>
-                        <span class="popup-qid"><a href="https://www.wikidata.org/wiki/${qid}" target="_blank" style="color:inherit;text-decoration:none;">${qid}</a></span><br>
-                        <a href="${josmUrl}" target="hiddenIframe" class="btn-josm">Edit in JOSM</a>
-                    `;
-                    
-                    marker.bindPopup(popupContent);
-                    
-                    if (status === 'missing') {
-                        markersMissing.addLayer(marker);
-                    } else {
-                        markersDone.addLayer(marker);
-                    }
-                    return marker;
+                // Circle Marker style
+                var color = (props.status === 'missing') ? COLOR_MISSING : COLOR_DONE;
+                
+                var marker = L.circleMarker(latlng, {
+                    radius: 5,
+                    fillColor: color,
+                    color: "#fff",
+                    weight: 1,
+                    opacity: 1,
+                    fillOpacity: 0.8
+                }).bindPopup(popupHtml);
+
+                // Add to respective layer
+                if (props.status === 'missing') {
+                    layers.missing.addLayer(marker);
+                    stats.missing++;
+                } else {
+                    layers.done.addLayer(marker);
+                    stats.done++;
                 }
             });
 
-            map.addLayer(markersMissing); // Default view
+            // 3. Initialize View
+            layers.missing.addTo(map); // Default: show missing
+            // layers.done.addTo(map); // Uncomment to show done by default
 
-            var overlays = {
-                "<span style='color:red'>Missing in OSM</span>": markersMissing,
-                "<span style='color:green'>Mapped in OSM</span>": markersDone
-            };
-            L.control.layers(null, overlays, {collapsed: false}).addTo(map);
+            // 4. Update Header UI
+            updateHeader();
+
         })
-        .catch(e => console.error("Error loading GeoJSON:", e));
+        .catch(err => console.error("Error loading data:", err));
 
-    var iframe = document.createElement('iframe');
-    iframe.name = "hiddenIframe";
-    iframe.style.display = "none";
-    document.body.appendChild(iframe);
+    function updateHeader() {
+        var container = document.getElementById('controls');
+        container.innerHTML = `
+            <div class="stat-item">
+                <span class="dot dot-red"></span>
+                <label>
+                    <input type="checkbox" checked onchange="toggleLayer('missing', this.checked)">
+                    Missing (${stats.missing})
+                </label>
+            </div>
+            <div class="stat-item">
+                <span class="dot dot-green"></span>
+                <label>
+                    <input type="checkbox" onchange="toggleLayer('done', this.checked)">
+                    Mapped (${stats.done})
+                </label>
+            </div>
+        `;
+    }
+
+    function toggleLayer(type, isChecked) {
+        if (isChecked) {
+            map.addLayer(layers[type]);
+        } else {
+            map.removeLayer(layers[type]);
+        }
+    }
+
 </script>
 </body>
 </html>
