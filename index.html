@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Südtirol Wikidata Check</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+    <style>
+        body { margin: 0; font-family: sans-serif; }
+        #header { background: #222; color: white; padding: 10px 15px; display: flex; justify-content: space-between; align-items: center; height: 50px; }
+        #map { height: calc(100vh - 70px); width: 100%; }
+        .btn { background: #444; color: white; text-decoration: none; padding: 5px 10px; border-radius: 4px; border: 1px solid #666; font-size: 0.8em; margin-left: 10px;}
+        .btn:hover { background: #666; }
+        #counter { color: #ff5555; font-weight: bold; }
+        .popup-btn { background: #0078A8; color: white; padding: 5px 10px; border-radius: 3px; display: block; text-align: center; text-decoration: none; margin-top: 5px;}
+    </style>
+</head>
+<body>
+
+<div id="header">
+    <div>
+        <b>Wikidata vs. OSM</b>
+        <a href="https://github.com/ilselvaggio/suedtirol-wikidata/actions/workflows/update.yml" target="_blank" class="btn" title="Daten aktualisieren">
+            &#x21bb; Update starten
+        </a>
+    </div>
+    <div>
+        Offen: <span id="counter">--</span>
+        <span style="font-size:0.8em; color:#aaa" id="date"></span>
+    </div>
+</div>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script>
+    var map = L.map('map').setView([46.6, 11.4], 9);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OSM' }).addTo(map);
+    var markers = L.markerClusterGroup({ disableClusteringAtZoom: 16, spiderfyOnMaxZoom: false });
+
+    fetch('data.geojson', {cache: "no-store"})
+        .then(r => {
+            const date = r.headers.get('Last-Modified');
+            if(date) document.getElementById('date').innerText = new Date(date).toLocaleString('de-DE');
+            return r.json();
+        })
+        .then(data => {
+            document.getElementById('counter').innerText = data.features.length;
+            L.geoJSON(data, {
+                pointToLayer: (f, latlng) => L.marker(latlng),
+                onEachFeature: (f, l) => {
+                    var p = f.properties;
+                    var josm = `http://127.0.0.1:8111/load_and_zoom?left=${f.geometry.coordinates[0]-0.0005}&right=${f.geometry.coordinates[0]+0.0005}&top=${f.geometry.coordinates[1]+0.0005}&bottom=${f.geometry.coordinates[1]-0.0005}&select=node`;
+                    l.bindPopup(`<b>${p.name}</b><br><small>${p.wikidata}</small><br><a href="${josm}" class="popup-btn" target="hiddenIframe">JOSM</a>`);
+                }
+            }).addTo(markers);
+            map.addLayer(markers);
+        });
+</script>
+<iframe name="hiddenIframe" style="display:none;"></iframe>
+</body>
+</html>
